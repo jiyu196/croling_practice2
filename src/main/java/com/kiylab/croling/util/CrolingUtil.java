@@ -1,7 +1,13 @@
 package com.kiylab.croling.util;
 
+import com.kiylab.croling.entity.ProductCrawl;
+import com.kiylab.croling.entity.Tag;
+import com.kiylab.croling.repository.ProductCrawlRepository;
+import com.kiylab.croling.repository.TagRepository;
 import io.github.bonigarcia.wdm.WebDriverManager;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import org.jsoup.Jsoup;
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebDriver;
@@ -9,16 +15,20 @@ import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.springframework.stereotype.Component;
 
+import javax.lang.model.util.Elements;
+import javax.swing.text.Document;
+import java.io.IOException;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.NoSuchElementException;
+import java.util.*;
 
 
 @Component
 @RequiredArgsConstructor
+@Getter
 public class CrolingUtil {
   private final S3Upload s3Upload;
+  private final ProductCrawlRepository  productCrawlRepository;
+  private final TagRepository tagRepository;
 
 
   public void printPageHtml(String url) throws Exception {
@@ -32,16 +42,36 @@ public class CrolingUtil {
       Thread.sleep(2000);
 
 //      String name = getName(driver);
-      String description = getDescription(driver);
+//      String description = getDescription(driver);
 //      int price = getPrice(driver);
 //      String category = getCategory(driver);
 //      String thumbnail = getThumbnail(driver);
 //      String modelName = getModelName(driver);
+        Map<String, Map<String, String>> tags = getTag(driver);
 
 
       // 최종 결과 출력
       System.out.println("===== data-* 속성 제거된 첫 번째 iw_placeholder 블록 =====");
-      System.out.println(description);
+      System.out.println(tags);
+
+      tags.forEach((listkey, listval) -> {
+        if(productCrawlRepository.findByModelName(listkey).isPresent()){
+          if (listval.size() > 0){
+            listval.forEach((listkey2, listval2) -> {
+              if(listval2.split(",").length > 1){
+                for(String t : listval2.split(",")){
+                  tagRepository.save(Tag.builder().product(productCrawlRepository.findByModelName(listkey).get()).tagName(listkey2).tagValue(t).build());
+                }
+              }
+              else {
+
+              tagRepository.save(Tag.builder().product(productCrawlRepository.findByModelName(listkey).get()).tagName(listkey2).tagValue(listval2).build());
+              }
+            });
+          }
+        }
+      } );
+
     } finally {
       driver.quit();
     }
@@ -284,4 +314,48 @@ public class CrolingUtil {
     if (text == null) return null;
     return text.replaceAll("(?i)lg", "SAYREN");
   }
+
+
+
+
+  public static Map<String, Map<String, String>> getTag(WebDriver driver) {
+    Map<String, Map<String, String>> productSpecMap = new LinkedHashMap<>();
+
+    // ul[role=list] > li 전체 찾기
+    List<WebElement> liElements = driver.findElements(
+            By.cssSelector("ul[role=list] > li.CommonPcListUnitProduct_unit__h6bSJ")
+    );
+
+    for (WebElement li : liElements) {
+      // 1. 모델명 추출
+      String modelName = "";
+      try {
+        WebElement modelElement = li.findElement(By.cssSelector(".product-card-title_sku"));
+        modelName = modelElement.getText().replace("모델명", "").trim(); // "모델명" 제거
+      } catch (Exception e) {
+        continue;
+      }
+
+      // 2. 내부 스펙 추출 (p 태그의 텍스트 = key, em = value)
+      Map<String, String> specs = new LinkedHashMap<>();
+      List<WebElement> pElements = li.findElements(
+              By.cssSelector("div[class*='CommonPcListUnitProduct_spec_wrap'] p")
+      );
+
+      for (WebElement p : pElements) {
+        try {
+          String key = p.getText().replace(p.findElement(By.tagName("em")).getText(), "").trim();
+          String value = p.findElement(By.tagName("em")).getText().trim();
+          specs.put(key, value);
+        } catch (Exception ignore) {}
+      }
+
+      productSpecMap.put(modelName, specs);
+    }
+
+    return productSpecMap;
+  }
+
+
+
 }

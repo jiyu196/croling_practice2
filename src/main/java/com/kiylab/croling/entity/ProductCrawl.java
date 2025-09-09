@@ -24,6 +24,7 @@ public class ProductCrawl {
 
   private String productCategory;
 
+  @Column(nullable = false, unique = true)
   private String modelName;
 
   @Column(updatable = false, insertable = false,

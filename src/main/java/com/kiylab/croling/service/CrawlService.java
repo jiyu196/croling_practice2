@@ -2,17 +2,25 @@ package com.kiylab.croling.service;
 
 import com.kiylab.croling.entity.AttachCrawl;
 import com.kiylab.croling.entity.ProductCrawl;
+import com.kiylab.croling.entity.Tag;
 import com.kiylab.croling.repository.AttachCrawlRepository;
 import com.kiylab.croling.repository.ProductCrawlRepository;
+import com.kiylab.croling.repository.TagRepository;
 import com.kiylab.croling.util.CrolingUtil;
 import io.github.bonigarcia.wdm.WebDriverManager;
 import lombok.RequiredArgsConstructor;
+import org.jsoup.Jsoup;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.springframework.stereotype.Service;
 
+import javax.lang.model.util.Elements;
+import javax.swing.text.Document;
+import java.io.IOException;
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -22,6 +30,8 @@ public class CrawlService {
   private final ProductCrawlRepository productCrawlRepository;
   private final AttachCrawlRepository attachCrawlRepository;
   private final CrolingUtil crolingUtil;
+  private final TagRepository tagRepository;
+
 
   public void crawlAndSave(String url) throws Exception {
     WebDriverManager.chromedriver().setup();
@@ -87,10 +97,26 @@ public class CrawlService {
         attachCrawlRepository.save(descAttach);
       }
 
-      System.out.println("DB 저장 완료: " + productCrawl.getName());
+//      // 4. 태그 저장 (util에서 가져오기)
+//      Map<String, Map<String, String>> tags = CrolingUtil.getTag(driver);
+//      Map<String, String> currentSpecs = tags.get(modelName);
+//
+//      if (currentSpecs != null) {
+//        currentSpecs.forEach((tagName, tagValue) -> {
+//          tagRepository.save(
+//                  Tag.builder()
+//                          .product(productCrawl) // FK 매핑
+//                          .tagName(tagName)
+//                          .tagValue(tagValue)
+//                          .build()
+//          );
+//        });
+//      }
+//      System.out.println("DB 저장 완료: " + productCrawl.getName());
 
     } finally {
       driver.quit();
     }
   }
+
 }
