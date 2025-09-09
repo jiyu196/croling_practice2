@@ -10,6 +10,7 @@ import org.openqa.selenium.chrome.ChromeDriver;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.NoSuchElementException;
 
@@ -71,7 +72,7 @@ public class CrolingUtil {
     }
   }
 
-  private String getDescription(WebDriver driver) throws Exception {
+  public String getDescription(WebDriver driver) throws Exception {
     WebElement firstBlock = driver.findElement(By.className("iw_placeholder"));
 
     List<WebElement> allElements = firstBlock.findElements(By.xpath(".//*"));
@@ -83,7 +84,7 @@ public class CrolingUtil {
     org.jsoup.nodes.Document doc = org.jsoup.Jsoup.parse(html);
 
     // ✅ 불필요한 wrapper 요소 제거
-    doc.select(".banner-wrap, .img-wrap, .img-alt, .mo, .mo-only, button").remove();
+    doc.select(".banner-wrap, .img-wrap, .img-alt, .mo, .mo-only, button, .bullet-list, .animation-area").remove();
 
     // ✅ a 태그 제거 (안에 있는 텍스트나 이미지만 살려서 대체)
     for (org.jsoup.nodes.Element a : doc.select("a")) {
@@ -197,6 +198,27 @@ public class CrolingUtil {
 
     String resultHtml = doc.body().html();
     return replaceBrandName(resultHtml); // ✅ 치환 적용
+  }
+
+  public List<String> getDescriptionImageUrls(WebDriver driver) throws Exception {
+    WebElement firstBlock = driver.findElement(By.className("iw_placeholder"));
+    String html = firstBlock.getDomProperty("outerHTML");
+
+    org.jsoup.nodes.Document doc = org.jsoup.Jsoup.parse(html);
+
+    List<String> imageUrls = new ArrayList<>();
+
+    for (org.jsoup.nodes.Element img : doc.select("img")) {
+      String src = img.attr("src");
+      if (src != null && !src.isBlank()) {
+        if (!src.startsWith("http")) {
+          src = "https://www.lge.co.kr" + src;
+        }
+        String s3Url = s3Upload.getFullUrl(s3Upload.upload(src));
+        imageUrls.add(s3Url);
+      }
+    }
+    return imageUrls;
   }
 
   public int getPrice(WebDriver driver) {

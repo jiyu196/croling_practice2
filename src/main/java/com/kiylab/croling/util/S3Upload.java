@@ -1,6 +1,9 @@
 package com.kiylab.croling.util;
 
+import com.kiylab.croling.entity.AttachCrawl;
+import com.kiylab.croling.repository.AttachCrawlRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
@@ -16,7 +19,8 @@ import java.util.UUID;
 
 @Component
 public class S3Upload {
-
+    @Autowired
+    private AttachCrawlRepository attachCrawlRepository;
     private final S3Client s3Client;
     private final String bucket;
 
@@ -55,6 +59,7 @@ public class S3Upload {
 
     return s3Key;
   }
+
 
   public String getFullUrl(String s3Key) {
     return "https://" + bucket + ".s3.ap-northeast-2.amazonaws.com/" + s3Key;

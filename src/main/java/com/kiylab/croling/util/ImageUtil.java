@@ -1,5 +1,10 @@
 package com.kiylab.croling.util;
 
+import com.kiylab.croling.repository.AttachCrawlRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+
 import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageWriteParam;
@@ -12,7 +17,9 @@ import java.net.URL;
 import java.util.Iterator;
 
 
+
 public class ImageUtil {
+
   public static byte[] convertUrlToWebpBytes(String imageUrl) throws Exception {
     // 1. 원본 이미지 읽기
     BufferedImage originalImage;

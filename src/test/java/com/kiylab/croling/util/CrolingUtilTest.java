@@ -9,9 +9,10 @@ public class CrolingUtilTest {
   @Autowired
   private CrolingUtil crolingUtil;
 
+
   @Test
   public void crolingTest() throws Exception {
-    crolingUtil.printPageHtml("https://www.lge.co.kr/water-purifiers/wd524awb");
+    crolingUtil.printPageHtml("https://www.lge.co.kr/kimchi-refrigerators/z499mpsf11");
 
 
   }
