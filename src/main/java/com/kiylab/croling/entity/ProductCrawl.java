@@ -17,7 +17,7 @@ public class ProductCrawl {
 
   private String name;
 
-  @Column(columnDefinition = "TEXT")
+  @Column(columnDefinition = "MEDIUMTEXT")
   private String description;
 
   private int price;

@@ -13,6 +13,7 @@ import lombok.*;
 public class Tag {
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @Column(name = "id")
   Long tagId;
 
   @ManyToOne(fetch = FetchType.LAZY, optional = false)

@@ -10,11 +10,15 @@ import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.Rollback;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
 
 @SpringBootTest
+//@Transactional
+//@Rollback(false)
 public class CrawlServiceTest {
 
   @Autowired
@@ -27,10 +31,9 @@ public class CrawlServiceTest {
   private TagRepository tagRepository;
 
 
-
   @Test
     public void crawlingTest() throws Exception {
-      crawlService.crawlAndSave("https://www.lge.co.kr/water-purifiers/wd524awb");
+      crawlService.crawlCategory("https://www.lge.co.kr/category/humidifiers");
 
       //https://www.lge.co.kr/water-purifiers/wd323acb
     }

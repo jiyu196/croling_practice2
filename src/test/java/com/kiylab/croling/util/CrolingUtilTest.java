@@ -12,8 +12,7 @@ public class CrolingUtilTest {
 
   @Test
   public void crolingTest() throws Exception {
-    crolingUtil.printPageHtml("https://www.lge.co.kr/category/water-purifiers");
-
+    crolingUtil.printPageHtml("https://www.lge.co.kr/category/refrigerators");
 
   }
 }
