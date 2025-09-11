@@ -13,6 +13,7 @@ import io.github.bonigarcia.wdm.WebDriverManager;
 import lombok.RequiredArgsConstructor;
 import org.jsoup.Jsoup;
 import org.openqa.selenium.By;
+import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
@@ -26,6 +27,7 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -139,12 +141,13 @@ public class CrawlService {
 //      driver.quit();
 //    }
 //  }
+
   /**
-   * 카테고리 URL 크롤링
-   * - 카테고리 페이지에서 제품 리스트 li 요소 읽음
-   * - 각 li의 data-ec-product(JSON) 파싱
-   * - model_id → model_sku 순으로 상세페이지 URL 조립
-   * - 상세페이지 들어가서 상품 저장
+   * 카테고리 페이지 크롤링 메서드
+   * 1. 카테고리 URL 접속
+   * 2. 제품 리스트 li 요소 탐색
+   * 3. 각 li에서 상세페이지 링크 추출
+   * 4. 상세페이지 크롤링 실행
    */
   public void crawlCategory(String categoryUrl) throws Exception {
     WebDriverManager.chromedriver().setup();
@@ -153,60 +156,112 @@ public class CrawlService {
     driver.manage().window().maximize();
 
     try {
+      // 카테고리 페이지 열기
       driver.get(categoryUrl);
       Thread.sleep(2000);
 
-      // 1. 태그 맵 수집 (리스트에서만 가능)
+      // 리스트에서 스펙 태그 수집 (제품 모델명 → 스펙 Map 구조)
       Map<String, Map<String, String>> tagMap = CrolingUtil.getTag(driver);
 
-      // 2. 제품 리스트 li 요소 수집
+      // 제품 리스트 li 요소 전체 찾기
       List<WebElement> products = driver.findElements(By.cssSelector("ul[role=list] > li"));
 
-      ObjectMapper mapper = new ObjectMapper();
+      System.out.println("리스트 Count: " + products.size());
 
-      for (WebElement product : products) {
-        String rawJson = product.getAttribute("data-ec-product");
-        if (rawJson == null || rawJson.isBlank()) continue;
+      // 카테고리 페이지에서 제품 리스트 크롤링 반복
+      for (int i = 0; i < products.size(); i++) {
+        try {
+          // 1. 매번 카테고리 페이지로 돌아가기
+          //    이유: 이전에 상세페이지로 이동했기 때문에
+          //    다시 카테고리 페이지를 로딩해야 다음 상품 li를 찾을 수 있음
+          driver.get(categoryUrl);
+          Thread.sleep(2000); // 페이지 로딩 대기
 
-        JsonNode json = mapper.readTree(rawJson);
+          // 2. 카테고리 페이지에서 제품 리스트 다시 읽기
+          //    driver.get()을 다시 했기 때문에 products 리스트도 새로 읽어와야 함
+          products = driver.findElements(By.cssSelector("ul[role=list] > li"));
 
-        // model_sku (예: HW500DA5.AKOR)
-        String modelSku = json.has("model_sku") ? json.get("model_sku").asText() : null;
-        if (modelSku == null || modelSku.isBlank()) continue;
+          // 3. i번째 제품 요소 선택
+          //    products 리스트는 다시 읽었지만, 인덱스 i로 접근하면
+          //    처음에 세어둔 products.size() 기준으로 모든 상품에 접근 가능
+          WebElement product = products.get(i);
 
-        // 카테고리 URL에서 "/category" 제거 → 상세페이지 패턴 맞추기
-        String baseCategory = categoryUrl.replace("/category", "");
+          // 4. 제품 li 안에서 상세페이지 링크(a 태그) 추출
+          WebElement linkElement = product.findElement(By.xpath(".//a[@href]"));
+          String href = linkElement.getAttribute("href");
 
-        // 상세페이지 URL 조립 (소문자 + 점 → 대시 변환)
-        String detailUrl = baseCategory + "/" + modelSku.toLowerCase().replace(".", "-");
+          // 5. 상대경로일 경우 앞에 LG 도메인을 붙여서 절대경로로 변환
+          String detailUrl = href.startsWith("http") ? href : "https://www.lge.co.kr" + href;
 
-        // 상세페이지 크롤링 실행
-        crawlAndSaveWithTags(detailUrl, tagMap);
+          System.out.println("detailUrl" + detailUrl);
+
+          // 6. 상세페이지 크롤링 실행 (상품 정보 + 이미지 + 태그 저장)
+          crawlAndSaveWithTags(driver, detailUrl, tagMap);
+
+          System.out.println("6. 크롤링종료");
+
+        } catch (Exception e) {
+          // 상품 하나라도 실패하면 로그만 찍고 다음 상품으로 넘어감
+          System.err.println("상품 크롤링 실패: " + e.getMessage());
+          continue;
+        }
       }
 
     } finally {
-      driver.quit();
+      driver.quit(); // 크롬 종료
     }
   }
 
   /**
-   * 상세페이지 하나 크롤링 + 저장
+   * 상세페이지 하나를 열고 상품 데이터를 DB에 저장하는 메서드
+   * - ProductCrawl: 상품 기본 정보
+   * - AttachCrawl: 썸네일, 상세 이미지
+   * - Tag: 스펙 태그
    */
-  private void crawlAndSaveWithTags(String url, Map<String, Map<String, String>> tagMap) throws Exception {
-    WebDriver driver = new ChromeDriver();
-    driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(10));
-    driver.manage().window().maximize();
-
+  private void crawlAndSaveWithTags(WebDriver driver, String url, Map<String, Map<String, String>> tagMap) throws Exception {
     try {
+      // 상세페이지 접속
+      System.out.println("crawlAndSaveWithTags: url: " + url);
       driver.get(url);
       Thread.sleep(2000);
 
+      // 스크롤 끝까지 내려서 lazy-loading 이미지 로드
+      JavascriptExecutor js = (JavascriptExecutor) driver;
+      long lastHeight = (long) js.executeScript("return document.body.scrollHeight");
+
+      System.out.println("DEBUG 1");
+
+      while (true) {
+        System.out.println("6. 크롤링종료");
+        js.executeScript("window.scrollTo(0, document.body.scrollHeight);");
+        Thread.sleep(1000);
+        long newHeight = (long) js.executeScript("return document.body.scrollHeight");
+        if (newHeight == lastHeight) break; // 더 이상 변화 없으면 종료
+        lastHeight = newHeight;
+      }
+
+      System.out.println("DEBUG 2");
+      // 상품 기본 정보 가져오기
       String name = crolingUtil.getName(driver);
+      System.out.println("DEBUG 2-1");
       String description = crolingUtil.getDescription(driver);
+      System.out.println("DEBUG 2-2");
       int price = crolingUtil.getPrice(driver);
+      System.out.println("DEBUG 2-3");
       String category = crolingUtil.getCategory(driver);
+      System.out.println("DEBUG 2-4");
       String modelName = crolingUtil.getModelName(driver);
 
+      System.out.println("DEBUG 3");
+      // DB 중복 체크 (modelName이 이미 있으면 저장하지 않음)
+      Optional<ProductCrawl> existing = productCrawlRepository.findByModelName(modelName);
+      if (existing.isPresent()) {
+        System.out.println("이미 존재하는 상품: " + modelName);
+        return;
+      }
+
+      System.out.println("DEBUG 4");
+      // 상품 저장
       ProductCrawl productCrawl = ProductCrawl.builder()
               .name(name)
               .description(description)
@@ -214,11 +269,12 @@ public class CrawlService {
               .productCategory(category)
               .modelName(modelName)
               .build();
-
       productCrawlRepository.save(productCrawl);
 
-      // 썸네일 저장
+      System.out.println("DEBUG 5");
+      // 썸네일 이미지 저장
       String thumbnailPath = crolingUtil.getThumbnail(driver);
+      System.out.println("thumbnailPath : " + thumbnailPath);
       if (thumbnailPath != null) {
         String path = thumbnailPath.substring(0, thumbnailPath.lastIndexOf("/"));
         String uuid = thumbnailPath.substring(thumbnailPath.lastIndexOf("/") + 1);
@@ -233,8 +289,10 @@ public class CrawlService {
         attachCrawlRepository.save(attachCrawl);
       }
 
+      System.out.println("DEBUG 6");
       // 상세설명 이미지 저장
       List<String> descImgs = crolingUtil.getDescriptionImageUrls(driver);
+      System.out.println("descImgs : " + descImgs.get(0));
       for (String fullPath : descImgs) {
         String fullUrl = fullPath.substring(0, fullPath.lastIndexOf("/"));
         String uuid = fullPath.substring(fullPath.lastIndexOf("/") + 1);
@@ -252,11 +310,13 @@ public class CrawlService {
         attachCrawlRepository.save(descAttach);
       }
 
-      // 태그 저장
+      System.out.println("DEBUG 7");
+      // 태그 저장 (리스트에서 수집한 Map 기반)
       Map<String, String> currentSpecs = tagMap.get(modelName);
       if (currentSpecs != null && !currentSpecs.isEmpty()) {
         currentSpecs.forEach((tagName, tagValue) -> {
           if (tagValue.contains(",")) {
+            // 값이 여러 개일 경우 쉼표 기준으로 분리 저장
             for (String v : tagValue.split(",")) {
               tagRepository.save(
                       Tag.builder()
@@ -267,6 +327,7 @@ public class CrawlService {
               );
             }
           } else {
+            // 단일 값은 그대로 저장
             tagRepository.save(
                     Tag.builder()
                             .product(productCrawl)
@@ -280,8 +341,8 @@ public class CrawlService {
 
       System.out.println("DB 저장 완료: " + productCrawl.getName());
 
-    } finally {
-      driver.quit();
+    } catch (Exception e) {
+      System.err.println("상세 크롤링 실패 (" + url + "): " + e.getMessage());
     }
   }
 }

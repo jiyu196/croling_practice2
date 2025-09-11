@@ -1,5 +1,7 @@
 package com.kiylab.croling.util;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kiylab.croling.entity.ProductCrawl;
 import com.kiylab.croling.entity.Tag;
 import com.kiylab.croling.repository.ProductCrawlRepository;
@@ -132,8 +134,11 @@ public class CrolingUtil {
       if (!src.startsWith("http")) {
         src = "https://www.lge.co.kr" + src;
       }
+      String newSrc = src.replace(" ", "%20");
+      System.out.println("img src: ==" + src + "==");
+      System.out.println("img newSrc: ==" + newSrc + "==");
 
-      String s3Url = s3Upload.getFullUrl(s3Upload.upload(src));
+      String s3Url = s3Upload.getFullUrl(s3Upload.upload(newSrc));
 
       // alt 텍스트 분리
       String altText = img.hasAttr("alt") ? img.attr("alt") : null;
@@ -244,7 +249,9 @@ public class CrolingUtil {
         if (!src.startsWith("http")) {
           src = "https://www.lge.co.kr" + src;
         }
-        String s3Url = s3Upload.getFullUrl(s3Upload.upload(src));
+        String newSrc = src.replace(" ", "%20");
+
+        String s3Url = s3Upload.getFullUrl(s3Upload.upload(newSrc));
         imageUrls.add(s3Url);
       }
     }
@@ -252,14 +259,47 @@ public class CrolingUtil {
   }
 
   public int getPrice(WebDriver driver) {
-    try {
-      WebElement priceEl = driver.findElement(By.cssSelector("dl.price-info.total-payment span.price em"));
-      String rawText = priceEl.getText();
-      String numeric = rawText.replaceAll("[^0-9]", "");
-      return Integer.parseInt(numeric);
-    } catch (Exception e) {
-      return 0;
+    // 가격이 나올 수 있는 후보 셀렉터들
+    String[] selectors = {
+            "dl.price-info.total-payment span.price em", // 결제 금액
+            ".rental-price strong",                      // 렌탈가
+            ".product-price strong",                     // 일반가
+            ".price-area em"                             // 기타 케이스
+    };
+
+    // 1. 여러 셀렉터 순회
+    for (String sel : selectors) {
+      try {
+        WebElement priceEl = driver.findElement(By.cssSelector(sel));
+        String text = priceEl.getText().replaceAll("[^0-9]", "");
+        if (!text.isBlank()) {
+          return Integer.parseInt(text);
+        }
+      } catch (NoSuchElementException ignore) {
+        // 해당 셀렉터 없으면 다음 시도
+      }
     }
+
+    // 2. JSON 기반 백업 (data-ec-product 속성 확인)
+    try {
+      WebElement jsonEl = driver.findElement(By.cssSelector("li[data-ec-product]"));
+      String rawJson = jsonEl.getAttribute("data-ec-product");
+      if (rawJson != null && !rawJson.isBlank()) {
+        JsonNode node = new ObjectMapper().readTree(rawJson);
+        if (node.has("price")) {
+          return node.get("price").asInt();
+        }
+        if (node.has("rental_price")) { // 렌탈가 필드가 따로 있을 수도 있음
+          return node.get("rental_price").asInt();
+        }
+      }
+    } catch (Exception ignore) {
+      // JSON도 없으면 무시
+    }
+
+    // 3. 끝까지 못 찾으면
+    System.out.println("가격 없음");
+    return -1;
   }
 
   public String getCategory(WebDriver driver) {
@@ -279,7 +319,7 @@ public class CrolingUtil {
         textEl = target.findElement(By.tagName("span"));
       }
 
-      return replaceBrandName(textEl.getText().trim()); // ✅ 치환 적용
+      return replaceBrandName(textEl.getText().trim()); // 치환 적용
     } catch (Exception e) {
       return "카테고리 없음";
     }
