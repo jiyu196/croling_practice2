@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kiylab.croling.entity.ProductCrawl;
 import com.kiylab.croling.entity.Tag;
 import com.kiylab.croling.repository.ProductCrawlRepository;
+import com.kiylab.croling.repository.ProductOptionRepository;
 import com.kiylab.croling.repository.TagRepository;
 import io.github.bonigarcia.wdm.WebDriverManager;
 import lombok.Getter;
@@ -31,7 +32,7 @@ public class CrolingUtil {
   private final S3Upload s3Upload;
   private final ProductCrawlRepository  productCrawlRepository;
   private final TagRepository tagRepository;
-
+  private final ProductOptionRepository ProductOptionRepository;
 
   public void printPageHtml(String url) throws Exception {
     WebDriverManager.chromedriver().setup();
@@ -98,7 +99,7 @@ public class CrolingUtil {
       WebElement nameEl = driver.findElement(By.cssSelector("h2.name"));
       String fullText = nameEl.getText();
       String name = fullText.split("\n")[0].trim();
-      return replaceBrandName(name); // ✅ 치환 적용
+      return replaceBrandName(name); // 치환 적용
     } catch (Exception e) {
       return "상품명 없음";
     }
@@ -115,16 +116,16 @@ public class CrolingUtil {
     String html = firstBlock.getDomProperty("outerHTML");
     org.jsoup.nodes.Document doc = org.jsoup.Jsoup.parse(html);
 
-    // ✅ 불필요한 wrapper 요소 제거
+    // 불필요한 wrapper 요소 제거
     doc.select(".banner-wrap, .img-wrap, .img-alt, .mo, .mo-only, button, .bullet-list, .animation-area").remove();
 
-    // ✅ a 태그 제거 (안에 있는 텍스트나 이미지만 살려서 대체)
+    // a 태그 제거 (안에 있는 텍스트나 이미지만 살려서 대체)
     for (org.jsoup.nodes.Element a : doc.select("a")) {
       a.unwrap(); // <a>만 제거, 내부 내용은 유지
     }
 
 
-    // ✅ 1. <img src="..."> 처리 + alt 분리
+    // 1. <img src="..."> 처리 + alt 분리
     for (org.jsoup.nodes.Element img : doc.select("img")) {
       String src = img.attr("src");
 
@@ -165,7 +166,7 @@ public class CrolingUtil {
       }
     }
 
-    // ✅ 2. style="background:url(...)" 처리 → img + alt 분리
+    // 2. style="background:url(...)" 처리 → img + alt 분리
     for (org.jsoup.nodes.Element el : doc.select("[style]")) {
       String style = el.attr("style");
 
@@ -222,7 +223,7 @@ public class CrolingUtil {
       }
     }
 
-// ✅ src 없는 <img> 제거
+// src 없는 <img> 제거
     for (org.jsoup.nodes.Element img : doc.select("img")) {
       String src = img.attr("src");
       if (src == null || src.isBlank()) {
@@ -232,7 +233,7 @@ public class CrolingUtil {
 
 
     String resultHtml = doc.body().html();
-    return replaceBrandName(resultHtml); // ✅ 치환 적용
+    return replaceBrandName(resultHtml); // 치환 적용
   }
 
   public List<String> getDescriptionImageUrls(WebDriver driver) throws Exception {
@@ -343,7 +344,7 @@ public class CrolingUtil {
       WebElement span = button.findElement(By.cssSelector("span.blind"));
       String blindText = span.getText().trim();
       String model = fullText.replace(blindText, "").trim();
-      return replaceBrandName(model); // ✅ 치환 적용
+      return replaceBrandName(model); // 치환 적용
     } catch (Exception e) {
       return "모델명 없음";
     }
@@ -354,9 +355,6 @@ public class CrolingUtil {
     if (text == null) return null;
     return text.replaceAll("(?i)lg", "SAYREN");
   }
-
-
-
 
   public static Map<String, Map<String, String>> getTag(WebDriver driver) {
     Map<String, Map<String, String>> productSpecMap = new LinkedHashMap<>();
@@ -394,6 +392,34 @@ public class CrolingUtil {
     }
 
     return productSpecMap;
+  }
+
+  /**
+   * 구독 상품 가격 가져오기
+   * - 화면에 표시된 월 요금 (.price.is-all-select)
+   * - data-rental-sale-price 속성 (백업)
+   */
+  public int getSubscribePrice(WebDriver driver) {
+    // 1. UI 표시된 월 요금
+    try {
+      WebElement priceEl = driver.findElement(By.cssSelector(".price.is-all-select"));
+      String text = priceEl.getText().replaceAll("[^0-9]", "");
+      if (!text.isBlank()) {
+        return Integer.parseInt(text);
+      }
+    } catch (Exception ignore) {}
+
+    // 2. data-rental-sale-price 속성
+    try {
+      WebElement benefitEl = driver.findElement(By.cssSelector(".benefit-info"));
+      String dataPrice = benefitEl.getAttribute("data-rental-sale-price");
+      if (dataPrice != null && !dataPrice.isBlank()) {
+        return Integer.parseInt(dataPrice);
+      }
+    } catch (Exception ignore) {}
+
+    System.out.println("구독 가격 없음");
+    return -1;
   }
 
 

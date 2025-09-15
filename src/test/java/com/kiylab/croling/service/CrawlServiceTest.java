@@ -34,7 +34,6 @@ public class CrawlServiceTest {
   @Test
     public void crawlingTest() throws Exception {
       crawlService.crawlCategory("https://www.lge.co.kr/category/humidifiers");
-
       //https://www.lge.co.kr/water-purifiers/wd323acb
     }
 

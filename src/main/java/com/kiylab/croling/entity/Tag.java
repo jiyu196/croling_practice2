@@ -4,7 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "tbl_tag")  // ✅ 테이블명만 바꿈
+@Table(name = "tbl_tag")  // 테이블명만 바꿈
 @Getter
 @Setter
 @Builder
